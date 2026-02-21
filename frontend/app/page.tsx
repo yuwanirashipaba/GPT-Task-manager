@@ -29,6 +29,30 @@ const priorityStyles: Record<Priority, string> = {
 
 const todayDate = () => new Date().toISOString().split("T")[0];
 
+// --- Frontend validation constants and helpers ---
+const TITLE_MIN_LENGTH = 1;
+const TITLE_MAX_LENGTH = 200;
+const VALID_PRIORITIES: Priority[] = ["Low", "Medium", "High"];
+
+function validateTitle(title: string): string {
+  const t = title.trim();
+  if (t.length < TITLE_MIN_LENGTH) return "Title is required.";
+  if (t.length > TITLE_MAX_LENGTH) return `Title must be at most ${TITLE_MAX_LENGTH} characters.`;
+  return "";
+}
+
+function validateDeadline(deadline: string): string {
+  if (!deadline || !deadline.trim()) return "Deadline is required.";
+  const date = new Date(deadline);
+  if (Number.isNaN(date.getTime())) return "Please enter a valid date.";
+  return "";
+}
+
+function validatePriority(priority: string): string {
+  if (!VALID_PRIORITIES.includes(priority as Priority)) return "Please select a valid priority.";
+  return "";
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<TaskResponse>({ pending: [], completed: [] });
   const [loading, setLoading] = useState(true);
@@ -43,6 +67,11 @@ export default function Home() {
     deadline: todayDate(),
     priority: "Medium" as Priority,
   });
+
+  // Create form field-level errors (cleared on change when user fixes input)
+  const [createErrors, setCreateErrors] = useState<{ title?: string; deadline?: string; priority?: string }>({});
+  // Edit form field-level errors (per task being edited)
+  const [editErrors, setEditErrors] = useState<{ title?: string; deadline?: string; priority?: string }>({});
 
   const totalCount = useMemo(
     () => tasks.pending.length + tasks.completed.length,
@@ -71,8 +100,17 @@ export default function Home() {
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!newTask.title.trim()) {
-      setError("Title is required");
+    const titleErr = validateTitle(newTask.title);
+    const deadlineErr = validateDeadline(newTask.deadline);
+    const priorityErr = validatePriority(newTask.priority);
+    const errors = {
+      ...(titleErr && { title: titleErr }),
+      ...(deadlineErr && { deadline: deadlineErr }),
+      ...(priorityErr && { priority: priorityErr }),
+    };
+    setCreateErrors(errors);
+    if (titleErr || deadlineErr || priorityErr) {
+      setError("Please fix the errors below.");
       return;
     }
 
@@ -90,6 +128,7 @@ export default function Home() {
       }
 
       setNewTask({ title: "", deadline: todayDate(), priority: "Medium" });
+      setCreateErrors({});
       await fetchTasks();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to add task");
@@ -147,11 +186,21 @@ export default function Home() {
     setEditTitle("");
     setEditDeadline(todayDate());
     setEditPriority("Medium");
+    setEditErrors({});
   };
 
   const saveEdit = async (task: Task) => {
-    if (!editTitle.trim()) {
-      setError("Edited title cannot be empty");
+    const titleErr = validateTitle(editTitle);
+    const deadlineErr = validateDeadline(editDeadline);
+    const priorityErr = validatePriority(editPriority);
+    const errors = {
+      ...(titleErr && { title: titleErr }),
+      ...(deadlineErr && { deadline: deadlineErr }),
+      ...(priorityErr && { priority: priorityErr }),
+    };
+    setEditErrors(errors);
+    if (titleErr || deadlineErr || priorityErr) {
+      setError("Please fix the errors below.");
       return;
     }
 
@@ -171,6 +220,7 @@ export default function Home() {
         throw new Error("Failed to save task");
       }
       cancelEdit();
+      setEditErrors({});
       await fetchTasks();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save task");
@@ -188,27 +238,76 @@ export default function Home() {
           <div className="flex-1">
             {isEditing ? (
               <div className="space-y-2">
-                <input
-                  value={editTitle}
-                  onChange={(event) => setEditTitle(event.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2"
-                />
-                <div className="flex flex-wrap gap-2">
+                <div>
                   <input
-                    type="date"
-                    value={editDeadline}
-                    onChange={(event) => setEditDeadline(event.target.value)}
-                    className="rounded border border-gray-300 px-3 py-2"
+                    value={editTitle}
+                    onChange={(event) => {
+                      setEditTitle(event.target.value);
+                      if (editErrors.title) {
+                        setEditErrors((e) => ({ ...e, title: undefined }));
+                        setError("");
+                      }
+                    }}
+                    required
+                    minLength={TITLE_MIN_LENGTH}
+                    maxLength={TITLE_MAX_LENGTH}
+                    aria-invalid={Boolean(editErrors.title)}
+                    aria-describedby={editErrors.title ? "edit-title-error" : undefined}
+                    className={`w-full rounded border px-3 py-2 ${editErrors.title ? "border-red-500" : "border-gray-300"}`}
                   />
-                  <select
-                    value={editPriority}
-                    onChange={(event) => setEditPriority(event.target.value as Priority)}
-                    className="rounded border border-gray-300 px-3 py-2"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
+                  {editErrors.title && (
+                    <p id="edit-title-error" className="mt-1 text-sm text-red-600" role="alert">
+                      {editErrors.title}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div>
+                    <input
+                      type="date"
+                      value={editDeadline}
+                      onChange={(event) => {
+                        setEditDeadline(event.target.value);
+                        if (editErrors.deadline) {
+                          setEditErrors((e) => ({ ...e, deadline: undefined }));
+                          setError("");
+                        }
+                      }}
+                      required
+                      aria-invalid={Boolean(editErrors.deadline)}
+                      aria-describedby={editErrors.deadline ? "edit-deadline-error" : undefined}
+                      className={`rounded border px-3 py-2 ${editErrors.deadline ? "border-red-500" : "border-gray-300"}`}
+                    />
+                    {editErrors.deadline && (
+                      <p id="edit-deadline-error" className="mt-1 text-sm text-red-600" role="alert">
+                        {editErrors.deadline}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <select
+                      value={editPriority}
+                      onChange={(event) => {
+                        setEditPriority(event.target.value as Priority);
+                        if (editErrors.priority) {
+                          setEditErrors((e) => ({ ...e, priority: undefined }));
+                          setError("");
+                        }
+                      }}
+                      aria-invalid={Boolean(editErrors.priority)}
+                      aria-describedby={editErrors.priority ? "edit-priority-error" : undefined}
+                      className={`rounded border px-3 py-2 ${editErrors.priority ? "border-red-500" : "border-gray-300"}`}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                    {editErrors.priority && (
+                      <p id="edit-priority-error" className="mt-1 text-sm text-red-600" role="alert">
+                        {editErrors.priority}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -289,37 +388,86 @@ export default function Home() {
 
         <section className="rounded-2xl bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-xl font-semibold">Create Task</h2>
-          <form onSubmit={handleCreateTask} className="grid gap-3 md:grid-cols-4">
-            <input
-              value={newTask.title}
-              onChange={(event) => setNewTask((prev) => ({ ...prev, title: event.target.value }))}
-              placeholder="Task title"
-              className="rounded border border-gray-300 px-3 py-2 md:col-span-2"
-            />
-            <input
-              type="date"
-              value={newTask.deadline}
-              onChange={(event) => setNewTask((prev) => ({ ...prev, deadline: event.target.value }))}
-              className="rounded border border-gray-300 px-3 py-2"
-            />
-            <select
-              value={newTask.priority}
-              onChange={(event) =>
-                setNewTask((prev) => ({ ...prev, priority: event.target.value as Priority }))
-              }
-              className="rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="Low">Low</option>
-              <option value="Medium">Medium</option>
-              <option value="High">High</option>
-            </select>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50 md:col-span-4"
-            >
-              {submitting ? "Adding Task..." : "Add Task"}
-            </button>
+          <form onSubmit={handleCreateTask} className="grid gap-3 md:grid-cols-4" noValidate>
+            <div className="md:col-span-2">
+              <input
+                value={newTask.title}
+                onChange={(event) => {
+                  setNewTask((prev) => ({ ...prev, title: event.target.value }));
+                  if (createErrors.title) {
+                    setCreateErrors((e) => ({ ...e, title: undefined }));
+                    setError("");
+                  }
+                }}
+                placeholder="Task title"
+                required
+                minLength={TITLE_MIN_LENGTH}
+                maxLength={TITLE_MAX_LENGTH}
+                aria-invalid={Boolean(createErrors.title)}
+                aria-describedby={createErrors.title ? "create-title-error" : undefined}
+                className={`w-full rounded border px-3 py-2 ${createErrors.title ? "border-red-500" : "border-gray-300"}`}
+              />
+              {createErrors.title && (
+                <p id="create-title-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {createErrors.title}
+                </p>
+              )}
+            </div>
+            <div>
+              <input
+                type="date"
+                value={newTask.deadline}
+                onChange={(event) => {
+                  setNewTask((prev) => ({ ...prev, deadline: event.target.value }));
+                  if (createErrors.deadline) {
+                    setCreateErrors((e) => ({ ...e, deadline: undefined }));
+                    setError("");
+                  }
+                }}
+                required
+                aria-invalid={Boolean(createErrors.deadline)}
+                aria-describedby={createErrors.deadline ? "create-deadline-error" : undefined}
+                className={`w-full rounded border px-3 py-2 ${createErrors.deadline ? "border-red-500" : "border-gray-300"}`}
+              />
+              {createErrors.deadline && (
+                <p id="create-deadline-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {createErrors.deadline}
+                </p>
+              )}
+            </div>
+            <div>
+              <select
+                value={newTask.priority}
+                onChange={(event) => {
+                  setNewTask((prev) => ({ ...prev, priority: event.target.value as Priority }));
+                  if (createErrors.priority) {
+                    setCreateErrors((e) => ({ ...e, priority: undefined }));
+                    setError("");
+                  }
+                }}
+                aria-invalid={Boolean(createErrors.priority)}
+                aria-describedby={createErrors.priority ? "create-priority-error" : undefined}
+                className={`w-full rounded border px-3 py-2 ${createErrors.priority ? "border-red-500" : "border-gray-300"}`}
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+              {createErrors.priority && (
+                <p id="create-priority-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {createErrors.priority}
+                </p>
+              )}
+            </div>
+            <div className="md:col-span-4">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting ? "Adding Task..." : "Add Task"}
+              </button>
+            </div>
           </form>
           {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
         </section>
