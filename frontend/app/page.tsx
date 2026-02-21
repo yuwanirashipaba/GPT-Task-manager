@@ -41,10 +41,21 @@ function validateTitle(title: string): string {
   return "";
 }
 
+/** Returns YYYY-MM-DD for the day after today (minimum allowed deadline). */
+function minDeadlineDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 function validateDeadline(deadline: string): string {
   if (!deadline || !deadline.trim()) return "Deadline is required.";
   const date = new Date(deadline);
   if (Number.isNaN(date.getTime())) return "Please enter a valid date.";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  if (date.getTime() <= today.getTime()) return "Deadline must be after today.";
   return "";
 }
 
@@ -64,7 +75,7 @@ export default function Home() {
   const [editPriority, setEditPriority] = useState<Priority>("Medium");
   const [newTask, setNewTask] = useState({
     title: "",
-    deadline: todayDate(),
+    deadline: minDeadlineDate(),
     priority: "Medium" as Priority,
   });
 
@@ -127,7 +138,7 @@ export default function Home() {
         throw new Error("Failed to add task");
       }
 
-      setNewTask({ title: "", deadline: todayDate(), priority: "Medium" });
+      setNewTask({ title: "", deadline: minDeadlineDate(), priority: "Medium" });
       setCreateErrors({});
       await fetchTasks();
     } catch (createError) {
@@ -266,6 +277,7 @@ export default function Home() {
                     <input
                       type="date"
                       value={editDeadline}
+                      min={minDeadlineDate()}
                       onChange={(event) => {
                         setEditDeadline(event.target.value);
                         if (editErrors.deadline) {
@@ -417,6 +429,7 @@ export default function Home() {
               <input
                 type="date"
                 value={newTask.deadline}
+                min={minDeadlineDate()}
                 onChange={(event) => {
                   setNewTask((prev) => ({ ...prev, deadline: event.target.value }));
                   if (createErrors.deadline) {
